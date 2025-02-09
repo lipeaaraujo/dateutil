@@ -962,3 +962,71 @@ def test_parsererror_repr():
     s = repr(ParserError("Problem with string: %s", "2019-01-01"))
 
     assert s == "ParserError('Problem with string: %s', '2019-01-01')"
+
+# Base test cases for date range parsing
+DATE_RANGE_TEST_CASES = [
+    (
+        "January 1, 2020 to January 10, 2020", [datetime(2020, 1, 1), datetime(2020, 1, 2),
+        datetime(2020, 1, 3), datetime(2020, 1, 4), datetime(2020, 1, 5), datetime(2020, 1, 6),
+        datetime(2020, 1, 7), datetime(2020, 1, 8), datetime(2020, 1, 9), datetime(2020, 1, 10)],
+        "base date range"
+    ),
+    (
+        "January 10, 2020 to January 1, 2020", [datetime(2020, 1, 10), datetime(2020, 1, 9),
+        datetime(2020, 1, 8), datetime(2020, 1, 7), datetime(2020, 1, 6), datetime(2020, 1, 5),
+        datetime(2020, 1, 4), datetime(2020, 1, 3), datetime(2020, 1, 2), datetime(2020, 1, 1)],
+        "later start date"
+    ),
+    (
+        "January 1, 2020 to January 1, 2020", [datetime(2020, 1, 1)], "same date"
+    ),
+]
+
+@pytest.mark.parametrize("input_str,expected_range,description", DATE_RANGE_TEST_CASES)
+def test_date_range_parsing(input_str, expected_range, description):
+    date_range = parse(input_str, range=True)
+    assert date_range == expected_range, f"{description}"
+
+# Test cases for invalid date range parsing
+@pytest.mark.parametrize("input_str", ["January 1, 2020 to January 32, 2020"])
+def test_date_range_parsing_invalid_date(input_str):
+    with pytest.raises(ParserError):
+        parse(input_str, range=True)
+
+# Test cases for date range parsing with different arguments
+DATE_RANGE_TEST_CASES_ARGS = [
+    (
+        "01/01/2020 to 03/01/2020", True, False, False, 
+        [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 3)],
+        "day first date range"
+    ),
+    (
+        "2020-01-01 to 2020-01-03", False, True, False,
+        [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 3)],
+        "year first date range"
+    ),
+    (
+        "2020/01/01 to 2020/03/01", True, True, False,
+        [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 3)],
+        "day first and year first date range"
+    ),
+    (
+        "Today January 1, 2024 to Next week January 8, 2024", False, False, True,
+        [datetime(2024, 1, 1), datetime(2024, 1, 2), datetime(2024, 1, 3),
+         datetime(2024, 1, 4), datetime(2024, 1, 5), datetime(2024, 1, 6),
+         datetime(2024, 1, 7), datetime(2024, 1, 8)],
+        "fuzzy date range"
+    ),
+]
+    
+@pytest.mark.parametrize("input_str,dayfirst,yearfirst,fuzzy,expected_range,description",
+                         DATE_RANGE_TEST_CASES_ARGS)
+def test_date_range_parsing_arguments(input_str, dayfirst, yearfirst, fuzzy, expected_range, description):
+    date_range = parse(input_str, range=True, dayfirst=dayfirst, yearfirst=yearfirst, fuzzy=fuzzy)
+    assert date_range == expected_range, f"{description}"
+
+# Test for invalid date range parsing with tokens
+@pytest.mark.parametrize("input_str", ["Today January 1, 2024 to Next week January 8, 2024"])
+def test_date_range_parsing_prevent_fuzzy_with_tokens(input_str):
+    with pytest.raises(ParserError):
+        parse(input_str, range=True, fuzzy_with_tokens=True)

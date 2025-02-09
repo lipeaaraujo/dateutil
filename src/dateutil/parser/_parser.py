@@ -31,6 +31,7 @@ Additional resources about date/time string formats can be found below:
 from __future__ import unicode_literals
 
 import datetime
+from math import e
 import re
 import string
 import time
@@ -642,6 +643,10 @@ class parser(object):
         if res is None:
             raise ParserError("Unknown string format: %s", timestr)
 
+        # If res is a list, it means we have a date range
+        if isinstance(res, list):
+            return res
+        
         if len(res) == 0:
             raise ParserError("String does not contain a date: %s", timestr)
 
@@ -664,7 +669,7 @@ class parser(object):
                      "tzname", "tzoffset", "ampm","any_unused_tokens"]
 
     def _parse(self, timestr, dayfirst=None, yearfirst=None, fuzzy=False,
-               fuzzy_with_tokens=False):
+               fuzzy_with_tokens=False, range=False):
         """
         Private method which performs the heavy lifting of parsing, called from
         ``parse()``, which passes on its ``kwargs`` to this function.
@@ -703,7 +708,17 @@ class parser(object):
                 >>> parse("Today is January 1, 2047 at 8:21:00AM", fuzzy_with_tokens=True)
                 (datetime.datetime(2047, 1, 1, 8, 21), (u'Today is ', u' ', u'at '))
 
+        :param range:
+            If ``True``, the parser will attempt to parse a date range string
+            and return two :class:`datetime.datetime` objects.
         """
+        
+        # Check if the string is a date range
+        if range:
+            res = self._parse_date_range(timestr, dayfirst=dayfirst, yearfirst=yearfirst,
+                                         fuzzy=fuzzy, fuzzy_with_tokens=fuzzy_with_tokens)
+            return res, None
+        
         if fuzzy_with_tokens:
             fuzzy = True
 
@@ -871,6 +886,40 @@ class parser(object):
             return res, tuple(skipped_tokens)
         else:
             return res, None
+        
+    def _parse_date_range(self, timestr, **kwargs):
+        """
+        Parse a date range string into two :class:`datetime.datetime` objects.
+        
+        :param timestr:
+            The string to parse.
+            
+        :param \\*\\*kwargs:
+            Keyword arguments as passed to ``_parse()``.
+            
+        :return:
+            Returns a list of :class:`datetime.datetime` objects representing the date range.
+            
+        :raises ParserError:
+            Raised when fuzzy parsing is attempted with tokens in date ranges.
+        """
+        start_str, end_str = timestr.split(" to ")
+        start_date = self.parse(start_str.strip(), **kwargs)
+        end_date = self.parse(end_str.strip(), **kwargs)
+        
+        # should not allow fuzzy parsing with tokens in date ranges
+        if (isinstance(start_date, tuple) or isinstance(end_date, tuple)):
+            raise ParserError("Fuzzy parsing with tokens is not allowed for date ranges")
+        
+        step = 1 if start_date <= end_date else -1
+        days = abs((end_date - start_date).days)
+        
+        date_range = [
+            start_date + datetime.timedelta(days=day * step)
+            for day in range(days + 1)
+        ]
+        
+        return date_range
 
     def _parse_numeric_token(self, tokens, idx, info, ymd, res, fuzzy):
         # Token is a number
